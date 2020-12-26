@@ -72,7 +72,7 @@ def get_latest_commit(repo_name, username):
         return "Not enough information."
 
 
-def email(repository_link,ver,save):
+def email(repository_link,ver):
     try:
         import data
     except ImportError:
@@ -102,12 +102,17 @@ def email(repository_link,ver,save):
     colors.success("Repository Title : " + title, verbose)
     colors.process("Doxing started ...\n", verbose)
     stargazer_link = repository_link + "/stargazers"
+
+    page = 1
+
     while (stargazer_link is not None):
         stargazer_html = requests.get(stargazer_link).text
         soup2 = BeautifulSoup(stargazer_html, "lxml")
         a_next = soup2.findAll("a")
         for a in a_next:
             if a.get_text() == "Next":
+                page += 1
+                print('page:', page)
                 stargazer_link = a.get('href')
                 break
             else:
@@ -119,7 +124,16 @@ def email(repository_link,ver,save):
             data.username_list.append(username[1:])
     count = 1
     pos = 0
+
+
+    fields = ['Username', 'Email']
+    csv_file = data.header + '.csv'  # Name of csv file
+    file_path = os.path.join(os.environ["HOME"], csv_file)
+
+    csvfile = open(file_path, 'w+')
+
     while(count <= len(data.username_list)):
+        print(count, data.username_list[pos])
         repo_data = requests.get(
             "https://github.com/{}?tab=repositories&type=source"
             .format(data.username_list[pos])).text
@@ -134,211 +148,17 @@ def email(repository_link,ver,save):
                     repositories_list[0],
                     data.username_list[pos])  # Getting stargazer's email
             data.email_list.append(str(email))
+            csvfile.write(data.username_list[pos] + ',' + email + '\n')
+            csvfile.flush()
         else:
             data.email_list.append("Not enough information.")
         count += 1
         pos += 1
 
-    # Printing or saving the emails
-    print(colors.red + "{0}".format("-") * 75, colors.green, end="\n\n")
-    save_data = False
-    for arg in sys.argv[1:]:
-        if arg == '-s' or arg == '--save':
-            save_data = True
-            save_info(dat='emails')
-    if save_data is False:
-        for e in range(len(data.email_list)):
-            print(colors.white)
-            print(data.username_list[e], (30-len(data.username_list[e]))*' ',
-                  colors.green, '::',
-                  colors.white, data.email_list[e])
+    csvfile.close()
+    colors.success("Saved the data into " + file_path, True)
     print("\n", colors.green + "{0}".format("-") * 75,
           colors.green, end="\n\n")
-
-
-def save_info(dat='stardox'):
-    try:
-        import data
-        import csv
-    except ImportError:
-        colors.error('Error importing data module')
-        sys.exit(1)
-
-    if dat == 'stardox':
-        fields = ['Username', 'Repositories', 'Stars', 'Followers',
-                  'Following', 'Email']
-        rows = [[0 for x in range(6)] for y in range(len(data.username_list))]
-        for row in range(len(data.username_list)):
-            rows[row][0] = '@' + data.username_list[row]
-            rows[row][1] = data.repo_list[row].strip()
-            rows[row][2] = data.star_list[row].strip()
-            rows[row][3] = data.followers_list[row].strip()
-            rows[row][4] = data.following_list[row].strip()
-            rows[row][5] = data.email_list[row]
-    elif dat == 'emails':
-        fields = ['Username', 'Email']
-        rows = [[0 for x in range(2)] for y in range(len(data.username_list))]
-        for row in range(len(data.username_list)):
-            rows[row][0] = '@' + data.username_list[row]
-            rows[row][1] = data.email_list[row]
-
-    file_path = args.save
-    if file_path is not None and file_path.endswith('.csv'):
-        pass
-    else:
-        csv_file = data.header + '.csv'  # Name of csv file
-        file_path = os.path.join(os.environ["HOME"], "Desktop", csv_file)
-    try:
-        with open(file_path, 'w') as csvfile:
-            csvwriter = csv.writer(csvfile)
-            csvwriter.writerow(fields)
-            csvwriter.writerows(rows)
-            colors.success("Saved the data into " + file_path, True)
-    except FileNotFoundError:
-        colors.error("Please enter valid path.")
-        sys.exit()
-
-
-def stardox(repo_link, ver, save):
-    try:
-        print_data = True
-        save_data = False
-        for arg in sys.argv[1:]:
-            if arg == '-s' or arg == '--save':
-                save_data = True
-                print_data = False
-
-        repository_link = repo_link
-        verbose = ver
-        try:
-            # Getting HTML page of repository
-            html = requests.get(repository_link, timeout=8).text
-        except (requests.exceptions.RequestException,
-                requests.exceptions.HTTPError):
-            colors.error(
-                "Enter the repositories url in given format "
-                "[ https://github.com/username/repository_name ]")
-            sys.exit(1)
-        # Checking if the url given is of a repository or not.
-        result = verify_url(html)
-        if result:
-            colors.success("Got the repository data ", verbose)
-        else:
-            colors.error("Please enter the correct URL ")
-            sys.exit(0)
-        # Parsing the html data using BeautifulSoup
-        soup1 = BeautifulSoup(html, "lxml")
-        try:
-            import data
-        except ImportError:
-            colors.error('Error importing data module')
-            sys.exit(1)
-        title = getting_header(soup1)  # Getting the title of the page
-        data.header = title  # Storing title of the page as Project Title
-        colors.success("Repository Title : " + title, verbose)
-        star_value = watch_value = fork_value = 0
-
-        # Finding all the 'a' tags in response html data.
-        a_tags = soup1.findAll("a")
-        for a_tag in a_tags:  # Finding total stargazers of the repository
-            string = a_tag.get("href")
-            if(string.endswith("/watchers")):  # Finding total watchers
-                watch_value = (a_tag.get_text()).strip()
-                colors.success("Total watchers : " + watch_value, verbose)
-            if(string.endswith("/stargazers")):  # Finding total stargazers
-                star_value = (a_tag.get_text()).strip()
-                colors.success("Total stargazers : " + star_value, verbose)
-            if(string.endswith("/members")):  # Finding total members
-                fork_value = (a_tag.get_text()).strip()
-                colors.success("Total Forks : " + fork_value, verbose)
-                break
-        stargazer_link = repository_link + "/stargazers"
-        colors.process("Fetching stargazers list", verbose)
-
-        # Getting list of all the stargazers
-        while (stargazer_link is not None):
-            stargazer_html = requests.get(stargazer_link).text
-            soup2 = BeautifulSoup(stargazer_html, "lxml")
-            a_next = soup2.findAll("a")
-            for a in a_next:
-                if a.get_text() == "Next":
-                    stargazer_link = a.get('href')
-                    break
-                else:
-                    stargazer_link = None
-            follow_names = soup2.findAll("h3", {"class": "follow-list-name"})
-            for name in follow_names:
-                a_tag = name.findAll("a")
-                data.name_list.append(a_tag[0].get_text())
-                username = a_tag[0].get("href")
-                data.username_list.append(username[1:])
-        count = 1
-        pos = 0
-        colors.process("Doxing started ...\n", verbose)
-        print(colors.red + "{0}".format("-") * 75, colors.green, end="\n\n")
-        # Fetching details of stargazers one by one.
-        while(count <= len(data.username_list)):
-            starer_url = "https://github.com/" + data.username_list[pos]
-            user_html = requests.get(starer_url).text
-            soup3 = BeautifulSoup(user_html, "lxml")
-            repo_data = requests.get(
-                    "https://github.com/{}?tab=repositories&type=source"
-                    .format(data.username_list[pos])).text
-            repo_soup = BeautifulSoup(repo_data, "lxml")
-            a_tags = repo_soup.findAll("a")
-            repositories_list = []
-            for a_tag in a_tags:
-                if a_tag.get("itemprop") == "name codeRepository":
-                    repositories_list.append(a_tag.get_text().strip())
-            if len(repositories_list) > 0:
-                email = get_latest_commit(
-                        repositories_list[0],
-                        data.username_list[pos])  # Getting stargazer's email
-                data.email_list.append(str(email))
-            else:
-                data.email_list.append("Not enough information.")
-            if(user_html is not None):
-                items = soup3.findAll("a", {"class": "no-underline"})
-                for item in items[1:]:
-                    # Getting total repositories of the stargazer
-
-                    data.repo_list.append(len(repositories_list))
-
-                    # Getting total stars by the stargazer
-                    if item.get("href").endswith("stars") is True:
-                        a_tag = item.findAll("span")
-                        star_count = a_tag[0].get_text()
-                        data.star_list.append(star_count)
-                    # Getting total followers of the stargazers
-                    if item.get("href").endswith("followers") is True:
-                        a_tag = item.findAll("span")
-                        followers_count = a_tag[0].get_text()
-                        data.followers_list.append(followers_count)
-                    # Getting following list of the stargazers
-                    if item.get("href").endswith("following") is True:
-                        a_tag = item.findAll("span")
-                        following_count = a_tag[0].get_text()
-                        data.following_list.append(following_count)
-                if print_data is True:
-                    try:
-                        import structer
-                        # Plotting the tree structer of the fetched details
-                        structer.plotdata(len(data.username_list), pos, count)
-                    except ImportError:
-                        colors.error("Error importing structer module.")
-                        sys.exit(1)
-                count += 1
-                pos += 1
-
-        if save_data is True:
-            save_info()
-
-        print("\n", colors.green + "{0}".format("-") * 75,
-              colors.green, end="\n\n")
-    except KeyboardInterrupt:
-        print("\n\nYou're Great..!\nThanks for using :)")
-        sys.exit(0)
-
 
 if __name__ == '__main__':
     try:
@@ -350,13 +170,6 @@ if __name__ == '__main__':
         parser.add_argument('-v', '--verbose', help="Verbose",
                             required=False, default=True,
                             action='store_false')
-        parser.add_argument('-s', '--save',
-                            help="Save the doxed data in a csv file."
-                                 " By default, saved at Desktop.",
-                            required=False, default="../Desktop")
-        parser.add_argument('-e', '--email', action='store_true',
-                            help="Fetch only emails of stargazers.",
-                            required=False, default=False)
 
         try:
             import requests
@@ -367,8 +180,6 @@ if __name__ == '__main__':
         args = parser.parse_args()
         repository_link = args.rURL
         verbose = args.verbose
-        issave = args.save
-        isemail = args.email
 
 
         if args.rURL == False:
@@ -377,10 +188,8 @@ if __name__ == '__main__':
             print(repository_link)
 
         repository_link = format_url(repository_link)
-        if isemail:
-            email(repository_link,verbose,issave)
-        else:
-            stardox(repository_link,verbose,issave)
+
+        email(repository_link,verbose)
 
     except KeyboardInterrupt:
         print("\n\nYou're Great..!\nThanks for using :)")
